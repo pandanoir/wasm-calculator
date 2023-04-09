@@ -12,7 +12,13 @@ where
     Input: Stream<Token = char>,
     Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
 {
-    many1(digit()).map(|x: String| x.parse::<f64>().unwrap())
+    let num = || many1(digit()).map(|x: String| x.parse::<f64>().unwrap());
+    (
+        num(),
+        optional((char('.'), num().map(|x| x * 10_f64.powf(-x.log10().ceil()))))
+            .map(|x| x.map(|n| n.1)),
+    )
+        .map(|(int, frac)| int+frac.unwrap_or(0.0))
 }
 fn factor<Input>() -> impl Parser<Input, Output = f64>
 where
