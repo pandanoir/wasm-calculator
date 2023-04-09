@@ -7,20 +7,22 @@ use combine::{many, ParseError, Parser, Stream, *};
 // <factor> ::= <number> | '(' <expr> ')'
 // <number> :== 1つ以上の数字
 
-fn lex_char<Input>(c: char) -> impl Parser<Input, Output = char>
+trait ExprParser<Input: Stream<Token = char>, Output>: Parser<Input, Output = Output>
 where
-    Input: Stream<Token = char>,
     Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
 {
+}
+impl<Input: Stream<Token = char>, Output, T> ExprParser<Input, Output> for T where
+    T: Parser<Input, Output = Output>
+{
+}
+
+fn lex_char<Input: Stream<Token = char>>(c: char) -> impl ExprParser<Input, char> {
     let skip_spaces = || spaces().silent();
     char(c).skip(skip_spaces())
 }
 
-fn number<Input>() -> impl Parser<Input, Output = f64>
-where
-    Input: Stream<Token = char>,
-    Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
-{
+fn number<Input: Stream<Token = char>>() -> impl ExprParser<Input, f64> {
     let num = || many1(digit()).map(|x: String| x.parse::<f64>().unwrap());
     (
         optional(lex_char('-')).map(|x| if let Some(_) = x { -1.0 } else { 1.0 }),
@@ -30,18 +32,10 @@ where
     )
         .map(|(sign, int, frac)| sign * (int + frac.unwrap_or(0.0)))
 }
-fn factor<Input>() -> impl Parser<Input, Output = f64>
-where
-    Input: Stream<Token = char>,
-    Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
-{
+fn factor<Input: Stream<Token = char>>() -> impl ExprParser<Input, f64> {
     between(lex_char('('), lex_char(')'), expr()).or(number())
 }
-fn term<Input>() -> impl Parser<Input, Output = f64>
-where
-    Input: Stream<Token = char>,
-    Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
-{
+fn term<Input: Stream<Token = char>>() -> impl ExprParser<Input, f64> {
     (
         factor(),
         many::<Vec<(char, f64)>, _, _>((lex_char('*').or(lex_char('/')), factor())),
@@ -53,11 +47,7 @@ where
             )
         })
 }
-fn expr_<Input>() -> impl Parser<Input, Output = f64>
-where
-    Input: Stream<Token = char>,
-    Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
-{
+fn expr_<Input: Stream<Token = char>>() -> impl ExprParser<Input, f64> {
     (
         term(),
         many::<Vec<(char, f64)>, _, _>((lex_char('+').or(lex_char('-')), term())),
