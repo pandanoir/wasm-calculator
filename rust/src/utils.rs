@@ -17,8 +17,7 @@ impl<Input: Stream<Token = char>, Output, T: Parser<Input, Output = Output>>
 // <factor> ::= <number> | '(' <expr> ')'
 // <number> :== 1つ以上の数字
 fn lex_char<Input: Stream<Token = char>>(c: char) -> impl ExprParser<Input, char> {
-    let skip_spaces = || spaces().silent();
-    char(c).skip(skip_spaces())
+    char(c).skip(spaces().silent())
 }
 
 fn number<Input: Stream<Token = char>>() -> impl ExprParser<Input, f64> {
@@ -42,28 +41,22 @@ fn factor<Input: Stream<Token = char>>() -> impl ExprParser<Input, f64> {
     between(lex_char('('), lex_char(')'), expr()).or(number())
 }
 fn term<Input: Stream<Token = char>>() -> impl ExprParser<Input, f64> {
-    (
-        factor(),
-        many::<Vec<(char, f64)>, _, _>((lex_char('*').or(lex_char('/')), factor())),
-    )
-        .map(|x| {
+    (factor(), many((lex_char('*').or(lex_char('/')), factor()))).map(
+        |x: (f64, Vec<(char, f64)>)| {
             x.1.iter().fold(
                 x.0,
                 |acc, &(op, x)| if op == '*' { acc * x } else { acc / x },
             )
-        })
+        },
+    )
 }
 fn expr_<Input: Stream<Token = char>>() -> impl ExprParser<Input, f64> {
-    (
-        term(),
-        many::<Vec<(char, f64)>, _, _>((lex_char('+').or(lex_char('-')), term())),
-    )
-        .map(|x| {
-            x.1.iter().fold(
-                x.0,
-                |acc, &(op, x)| if op == '+' { acc + x } else { acc - x },
-            )
-        })
+    (term(), many((lex_char('+').or(lex_char('-')), term()))).map(|x: (f64, Vec<(char, f64)>)| {
+        x.1.iter().fold(
+            x.0,
+            |acc, &(op, x)| if op == '+' { acc + x } else { acc - x },
+        )
+    })
 }
 parser! {
     fn expr[Input]()(Input) -> f64 where [Input: Stream<Token = char>] { expr_() }
