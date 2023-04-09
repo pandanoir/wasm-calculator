@@ -7,6 +7,15 @@ use combine::{many, ParseError, Parser, Stream, *};
 // <factor> ::= <number> | '(' <expr> ')'
 // <number> :== 1つ以上の数字
 
+fn lex_char<Input>(c: char) -> impl Parser<Input, Output = char>
+where
+    Input: Stream<Token = char>,
+    Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
+{
+    let skip_spaces = || spaces().silent();
+    char(c).skip(skip_spaces())
+}
+
 fn number<Input>() -> impl Parser<Input, Output = f64>
 where
     Input: Stream<Token = char>,
@@ -14,19 +23,18 @@ where
 {
     let num = || many1(digit()).map(|x: String| x.parse::<f64>().unwrap());
     (
+        optional(lex_char('-')).map(|x| if let Some(_) = x { -1.0 } else { 1.0 }),
         num(),
         optional((char('.'), num().map(|x| x * 10_f64.powf(-x.log10().ceil()))))
             .map(|x| x.map(|n| n.1)),
     )
-        .map(|(int, frac)| int+frac.unwrap_or(0.0))
+        .map(|(sign, int, frac)| sign * (int + frac.unwrap_or(0.0)))
 }
 fn factor<Input>() -> impl Parser<Input, Output = f64>
 where
     Input: Stream<Token = char>,
     Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
 {
-    let skip_spaces = || spaces().silent();
-    let lex_char = |c| char(c).skip(skip_spaces());
     between(lex_char('('), lex_char(')'), expr()).or(number())
 }
 fn term<Input>() -> impl Parser<Input, Output = f64>
@@ -34,8 +42,6 @@ where
     Input: Stream<Token = char>,
     Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
 {
-    let skip_spaces = || spaces().silent();
-    let lex_char = |c| char(c).skip(skip_spaces());
     (
         factor(),
         many::<Vec<(char, f64)>, _, _>((lex_char('*').or(lex_char('/')), factor())),
@@ -52,8 +58,6 @@ where
     Input: Stream<Token = char>,
     Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
 {
-    let skip_spaces = || spaces().silent();
-    let lex_char = |c| char(c).skip(skip_spaces());
     (
         term(),
         many::<Vec<(char, f64)>, _, _>((lex_char('+').or(lex_char('-')), term())),
@@ -68,15 +72,11 @@ where
 parser! {
     fn expr[Input]()(Input) -> f64 where [Input: Stream<Token = char>] { expr_() }
 }
+
 pub fn parse_expr(expr_str: &str) -> Result<f64, String> {
     match expr().parse(expr_str) {
-        Ok((result, rest)) => {
-            if rest == "" {
-                Ok(result)
-            } else {
-                Err(format!("invalid formula: {}", rest))
-            }
-        }
+        Ok((result, rest)) if rest == "" => Ok(result),
+        Ok((_, rest)) => Err(format!("invalid formula: {}", rest)),
         Err(s) => Err(s.to_string()),
     }
 }
