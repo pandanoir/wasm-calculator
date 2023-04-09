@@ -29,4 +29,5 @@ fn pass() {
 
     assert_eq!(calc("00.1"), Err(String::from("invalid formula: 0.1")));
     assert_eq!(calc("0.1.2.3"), Err(String::from("invalid formula: .2.3")));
+    assert_eq!(calc("0 .1"), Err(String::from("invalid formula:  .1")));
 }

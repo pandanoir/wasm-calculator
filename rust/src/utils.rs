@@ -22,15 +22,17 @@ fn lex_char<Input: Stream<Token = char>>(c: char) -> impl ExprParser<Input, char
 }
 
 fn number<Input: Stream<Token = char>>() -> impl ExprParser<Input, f64> {
-    let sign = optional(lex_char('-')).map(|x| if let Some(_) = x { -1.0 } else { 1.0 });
-    let integer = char('0')
-        .map(|_| 0.0_f64)
-        .or((one_of("123456789".chars()), many(digit()))
-            .map(|x: (char, String)| (x.0.to_string() + &x.1).parse::<f64>().unwrap()));
+    let sign = lex_char('-').map(|_| -1.0);
+    let integer = choice!(
+        char('0').map(|_| 0.0_f64),
+        (one_of("123456789".chars()), many(digit()))
+            .map(|x: (char, String)| { format!("{}{}", x.0, x.1).parse::<f64>().unwrap() })
+    );
     let decimal =
         many1(digit()).map(|x: String| x.parse::<f64>().unwrap() * 10_f64.powf(-(x.len() as f64)));
+
     (
-        sign,
+        optional(sign).map(|x| x.unwrap_or(1.0)),
         integer,
         optional((char('.'), decimal)).map(|x| x.map(|n| n.1).unwrap_or(0.0)),
     )
