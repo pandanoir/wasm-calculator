@@ -12,16 +12,19 @@ impl<Input: Stream<Token = char>, Output, T: Parser<Input, Output = Output>>
 {
 }
 
+macro_rules! chars {
+    ( $x:expr ) => { { char($x).skip(spaces().silent()) } };
+    ( $x:expr, $( $xs:expr),* ) => {
+        { one_of(vec![$x, $($xs)*]).skip(spaces().silent()) }
+    };
+}
+
 // <expr>   ::= <term> [ ('+'|'-') <term> ]*
 // <term>   ::= <factor> [ ('*'|'/') <factor> ]*
 // <factor> ::= <number> | '(' <expr> ')'
 // <number> :== 1つ以上の数字
-fn lex_char<Input: Stream<Token = char>>(c: char) -> impl ExprParser<Input, char> {
-    char(c).skip(spaces().silent())
-}
-
 fn number<Input: Stream<Token = char>>() -> impl ExprParser<Input, f64> {
-    let sign = lex_char('-').map(|_| -1.0);
+    let sign = chars!('-').map(|_| -1.0);
     let integer = choice!(
         char('0').map(|_| 0.0_f64),
         (one_of("123456789".chars()), many(digit()))
@@ -38,20 +41,18 @@ fn number<Input: Stream<Token = char>>() -> impl ExprParser<Input, f64> {
         .map(|(sign, int, frac)| sign * (int + frac))
 }
 fn factor<Input: Stream<Token = char>>() -> impl ExprParser<Input, f64> {
-    between(lex_char('('), lex_char(')'), expr()).or(number())
+    between(chars!('('), chars!(')'), expr()).or(number())
 }
 fn term<Input: Stream<Token = char>>() -> impl ExprParser<Input, f64> {
-    (factor(), many((lex_char('*').or(lex_char('/')), factor()))).map(
-        |x: (f64, Vec<(char, f64)>)| {
-            x.1.iter().fold(
-                x.0,
-                |acc, &(op, x)| if op == '*' { acc * x } else { acc / x },
-            )
-        },
-    )
+    (factor(), many((chars!('*', '/'), factor()))).map(|x: (f64, Vec<(char, f64)>)| {
+        x.1.iter().fold(
+            x.0,
+            |acc, &(op, x)| if op == '*' { acc * x } else { acc / x },
+        )
+    })
 }
 fn expr_<Input: Stream<Token = char>>() -> impl ExprParser<Input, f64> {
-    (term(), many((lex_char('+').or(lex_char('-')), term()))).map(|x: (f64, Vec<(char, f64)>)| {
+    (term(), many((chars!('+', '-'), term()))).map(|x: (f64, Vec<(char, f64)>)| {
         x.1.iter().fold(
             x.0,
             |acc, &(op, x)| if op == '+' { acc + x } else { acc - x },
