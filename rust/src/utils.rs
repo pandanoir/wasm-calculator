@@ -16,7 +16,9 @@ fn lex_char<Input: Stream<Token = char>>(c: char) -> impl ExprParser<Input, char
     char(c).skip(spaces().silent())
 }
 macro_rules! chars {
-    ( $x:expr ) => { { one_of($x.chars()).skip(spaces().silent()) } };
+    ( $x:expr ) => {{
+        one_of($x.chars()).skip(spaces().silent())
+    }};
 }
 
 // <expr>   ::= <term> [ ('+'|'-') <term> ]*
@@ -41,22 +43,30 @@ fn number<Input: Stream<Token = char>>() -> impl ExprParser<Input, f64> {
         .map(|(sign, int, frac)| sign * (int + frac))
 }
 fn factor<Input: Stream<Token = char>>() -> impl ExprParser<Input, f64> {
-    between(lex_char('('), lex_char(')'), expr()).or(number())
+    between(lex_char('('), lex_char(')'), expr())
+        .or(number())
+        .skip(spaces().silent())
 }
 fn term<Input: Stream<Token = char>>() -> impl ExprParser<Input, f64> {
-    (factor(), many((chars!("*/"), factor()))).map(|x: (f64, Vec<(char, f64)>)| {
-        x.1.iter().fold(
-            x.0,
-            |acc, &(op, x)| if op == '*' { acc * x } else { acc / x },
-        )
-    })
+    (factor(), many((chars!("*/"), factor())))
+        .map(|x: (f64, Vec<(char, f64)>)| {
+            x.1.iter().fold(
+                x.0,
+                |acc, &(op, x)| if op == '*' { acc * x } else { acc / x },
+            )
+        })
+        .skip(spaces().silent())
 }
 fn expr_<Input: Stream<Token = char>>() -> impl ExprParser<Input, f64> {
-    (term(), many((chars!("+-"), term()))).map(|x: (f64, Vec<(char, f64)>)| {
-        x.1.iter().fold(
-            x.0,
-            |acc, &(op, x)| if op == '+' { acc + x } else { acc - x },
-        )
+    spaces().then(|_| {
+        (term(), many((chars!("+-"), term())))
+            .map(|x: (f64, Vec<(char, f64)>)| {
+                x.1.iter().fold(
+                    x.0,
+                    |acc, &(op, x)| if op == '+' { acc + x } else { acc - x },
+                )
+            })
+            .skip(spaces().silent())
     })
 }
 parser! {
@@ -69,4 +79,48 @@ pub fn parse_expr(expr_str: &str) -> Result<f64, String> {
         Ok((_, rest)) => Err(format!("invalid formula: {}", rest)),
         Err(s) => Err(s.to_string()),
     }
+}
+
+#[test]
+fn parse_number() {
+    assert_eq!(parse_expr("0.1"), Ok(0.1));
+    assert_eq!(parse_expr("0.0001"), Ok(0.0001));
+    assert_eq!(parse_expr("10.0001"), Ok(10.0001));
+    assert_eq!(parse_expr("3.2"), Ok(3.2));
+    assert_eq!(parse_expr("-3.2"), Ok(-3.2));
+    assert_eq!(parse_expr("32"), Ok(32.0));
+    assert_eq!(parse_expr("(64)"), Ok(64.0));
+}
+#[test]
+fn expression() {
+    assert_eq!(parse_expr("1.2+3.4*5.6"), Ok(20.24));
+    assert_eq!(parse_expr("1.2*(-2)"), Ok(-2.4));
+    assert_eq!(parse_expr("2*3"), Ok(6.0));
+    assert_eq!(parse_expr("3*(2*2)"), Ok(12.0));
+    assert_eq!(parse_expr("-3*(2*2)"), Ok(-12.0));
+    assert_eq!(parse_expr("123+456"), Ok(579.0));
+    assert_eq!(parse_expr("1+2*(3+4)"), Ok(15.0));
+    assert_eq!(parse_expr("12/4"), Ok(3.0));
+    assert_eq!(parse_expr("12-4"), Ok(8.0));
+}
+#[test]
+fn skip_whitespaces() {
+    assert_eq!(parse_expr("   1.2 +  3.4  * 5.6   "), Ok(20.24));
+    assert_eq!(parse_expr("1.2 * (  -  2   )   "), Ok(-2.4));
+    assert_eq!(parse_expr("2  *   3   "), Ok(6.0));
+    assert_eq!(parse_expr("   -   3  *  (2*2)    "), Ok(-12.0));
+    assert_eq!(parse_expr("    12  /  4  "), Ok(3.0));
+    assert_eq!(parse_expr("    12  -  4  "), Ok(8.0));
+}
+#[test]
+fn invalid_values() {
+    assert_eq!(
+        parse_expr("00.1"),
+        Err(String::from("invalid formula: 0.1"))
+    );
+    assert_eq!(
+        parse_expr("0.1.2.3"),
+        Err(String::from("invalid formula: .2.3"))
+    );
+    assert_eq!(parse_expr("0 .1"), Err(String::from("invalid formula: .1")));
 }
